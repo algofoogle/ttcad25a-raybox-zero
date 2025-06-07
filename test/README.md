@@ -20,10 +20,10 @@ If you run `make clean && make -B` it will run the RTL test. These render frames
 
 If you run `make clean && make -B GATES=yes` it will run the GL (gate-level) test. These take about 70 seconds per frame.
 
-Frame output files are `test/rbz_basic_frame-???.ppm`.
+Frame output files are `test/frames_out/rbz_basic_frame-???.ppm`.
 
 > [!NOTE]
-> If you change the RTL and want to do GL, remember that you'll need to reharden and then copy `../runs/wokwi/results/final/verilog/gl/tt_um_algofoogle_raybox_zero.v` to `./gate_level_netlist.v`.
+> If you change the RTL and want to do GL, remember that you'll need to reharden and then copy `../runs/wokwi/final/pnl/tt_um_algofoogle_raybox_zero.pnl.v` to `./gate_level_netlist.v`.
 
 To view the VCD file, run: `make wave`
 
