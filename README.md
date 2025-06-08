@@ -8,9 +8,10 @@ It is a sky130 resubmission of [ttihp0p2-raybox-zero](https://github.com/algofoo
 
 *   [Read the documentation for project](docs/info.md)
 
-The TT07 version used raybox-zero version 1.5, while this one uses 1.6. This includes the following improvements (some of which are now optional extras, selected by [`rbz_options.v`](./src/rbz_options.v)):
+The TT07 version used raybox-zero version 1.5, while this one uses 1.7. This includes the following improvements (some of which are now optional extras, selected by [`rbz_options.v`](./src/rbz_options.v)):
 *   `USE_POV_VIA_SPI_REGS`:
     *   POV now is set via the same SPI as all other registers, so it doesn't use a dedicated SPI interface.
+*   Extended wall IDs: Up to 8 textures in the map, instead of 4.
 *   `tex_pmod_type` input can select between the Tiny QSPI PMOD and the Digilent SPI PMOD.
 *   `debug` overlays show all of:
     *   `USE_MAP_OVERLAY` (shows the map)

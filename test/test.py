@@ -10,7 +10,7 @@ import re
 
 HIGH_RES        = float(env.get('HIGH_RES')) if 'HIGH_RES' in env else None # If not None, scale H res by this, and step by CLOCK_PERIOD/HIGH_RES instead of unit clock cycles.
 CLOCK_PERIOD    = float(env.get('CLOCK_PERIOD') or 40.0) # Default 40.0 (period of clk oscillator input, in nanoseconds)
-FRAMES          =   int(env.get('FRAMES')       or   12) # Default 12 (total frames to render)
+FRAMES          =   int(env.get('FRAMES')       or   15) # Default 15 (total frames to render)
 INC_PX          =   int(env.get('INC_PX')       or    1) # Default 1 (inc_px on)
 INC_PY          =   int(env.get('INC_PY')       or    1) # Default 1 (inc_py on)
 GEN_TEX         =   int(env.get('GEN_TEX')      or    0) # Default 0 (use tex ROM; no generated textures)
@@ -233,7 +233,7 @@ async def test_frames(dut):
 
         elif nframe == 8:
             # Turn on VINF (cmd 5) mode:
-            cocotb.start_soon(spi_send_reg(dut, 5, '10', 'turn on VINF, turn off LEAK_FIXED')) # '10' because we're sending a short payload.
+            cocotb.start_soon(spi_send_reg(dut, 5, '100', 'VINF on, LEAK_FIXED off, map_mode=0')) # '100' because we're sending a short payload.
 
         elif nframe == 9:
             # Turn off floor leak:
@@ -241,17 +241,40 @@ async def test_frames(dut):
             cocotb.start_soon(spi_send_reg(dut, 2, 0, 'turn off LEAK'))
 
         elif nframe == 10:
-            pass # Placeholder for dut.gen_tex.value = 1 in IMMEDIATE inputs, below.
+            # Turn on generated textures (disable SPI textures).
+            pass # Placeholder for dut.gen_texb.value = 0 in IMMEDIATE inputs, below.
 
         elif nframe == 11:
             # Turn off VINF:
-            cocotb.start_soon(spi_send_reg(dut, 5, '00', 'turn off VINF, turn off LEAK_FIXED'))
+            cocotb.start_soon(spi_send_reg(dut, 5, '000', 'VINF off, LEAK_FIXED off, map_mode=0'))
+
+        elif nframe == 12:
+            # Set map_mode=1:
+            cocotb.start_soon(spi_send_reg(dut, 5, '001', 'VINF off, LEAK_FIXED off, map_mode=1'))
+
+        elif nframe == 13:
+            # Turn off generated textures (enable SPI textures again).
+            pass # Placeholder for dut.gen_texb.value = 1 in IMMEDIATE inputs, below.
+
+        elif nframe == 14:
+            # Set MapDivX/Y to 12,3 with wall IDs 7,3:
+            cocotb.start_soon(spi_send_reg(dut, 6, '001100'+'000011'+'111'+'011', 'MDX/Y=12,3 WX/Y=7,3'))
+
+        #TODO: @@@@@@@@@@@@@@@@ MORE FRAMES @@@@@@@@@@@@@@@@@@@@@@@
+        # - Change TEXADD and floor/ceiling colours
+        # - Show 'dirt world' textures
+        # - Test LEAK_FIXED
+        # - Prepare for other stuff that's coming.
 
         # Now handle IMMEDIATE inputs that take effect on the current frame,
         # rather than the next:
         if frame == 10:
             # Turn on gen_tex (disable texture ROM; use generated textures instead):
             dut.gen_texb.value = 0 #NOTE: Immediate, so takes effect ON frame 10, not 11.
+
+        elif frame == 13:
+            # Turn off gen_tex (enable texture ROM):
+            dut.gen_texb.value = 1 #NOTE: Immediate, so takes effect ON frame 13.
 
         # Create PPM file to visualise the frame, and write its header:
         img = open(f"frames_out/rbz_basic_frame-{frame:03d}.ppm", "w")
