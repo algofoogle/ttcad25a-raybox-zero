@@ -213,6 +213,14 @@ async def test_frames(dut):
             # Frame 3 will turn off inc_px/py:
             dut.inc_px.value = 0
             dut.inc_py.value = 0
+            # ALSO, use the map rectangle register:
+            cocotb.start_soon(spi_send_reg(dut, 7,
+                '000110' + '001000' +   # mapr_ax/y
+                '001100' + '010010' +   # mapr_bx/y
+                '1' +                   # mapr_erase
+                '110',                  # mapr_wall
+                what='Map rectangle'
+            ))
 
         elif nframe == 4:
             # Set up a nice view for this frame.
@@ -242,8 +250,7 @@ async def test_frames(dut):
             cocotb.start_soon(spi_send_reg(dut, 4, 15, count=6, what='VSHIFT=15'))
 
         elif nframe == 10:
-            # Turn on generated textures (disable SPI textures; done with dut.gen_texb.value = 0 in IMMEDIATE inputs, below)...
-            # ...AND enable LEAK_FIXED:
+            # Enable LEAK_FIXED:
             cocotb.start_soon(spi_send_reg(dut, 5, '1'+'1'+'000', what='VINF on, LEAK_FIXED on, map_mode=0'))
 
         elif nframe == 11:
@@ -251,34 +258,31 @@ async def test_frames(dut):
             cocotb.start_soon(spi_send_reg(dut, 5, '0'+'0'+'000', what='VINF off, LEAK_FIXED off, map_mode=0'))
 
         elif nframe == 12:
-            # Set map_mode=1:
-            cocotb.start_soon(spi_send_reg(dut, 5, '0'+'0'+'001', what='VINF off, LEAK_FIXED off, map_mode=1'))
+            # Turn on generated textures (disable SPI textures; done with dut.gen_texb.value = 0 in IMMEDIATE inputs, below)...
+            # ...AND map_mode=2:
+            cocotb.start_soon(spi_send_reg(dut, 5, '0'+'0'+'010', what='VINF off, LEAK_FIXED off, map_mode=2'))
 
         elif nframe == 13:
             # Turn off generated textures (enable SPI textures again; dut.gen_texb.value = 1 in IMMEDIATE inputs, below)...
             # ...AND reset floor leak:
             # Send SPI2 ('reg') command 2 (LEAK) and payload 0:
-            cocotb.start_soon(spi_send_reg(dut, 2, 0, count=6, what='turn off LEAK'))
+            cocotb.start_soon(spi_send_reg(dut, 2, 0, count=6, what='LEAK=0'))
 
         elif nframe == 14:
-            # Set MapDivX/Y to 12,3 with wall IDs 7,3:
-            cocotb.start_soon(spi_send_reg(dut, 6, '001100'+'000011'+'111'+'011', what='MDX/Y=12,3 WX/Y=7,3'))
+            # Set MapDivX/Y to 12,3 with wall IDs 7,0:
+            cocotb.start_soon(spi_send_reg(dut, 6, '001100'+'000011'+'111'+'000', what='MDX/Y=12,3 WX/Y=7,0'))
 
         elif nframe == 15:
-            # Set TEXADD7 to 10:
-            cocotb.start_soon(spi_send_reg(dut, 39, 10, count=24, what='TEXADD7=10'))
-
-        # elif nframe == 16:
-        #     # Set TEXADD3 to 30:
-        #     cocotb.start_soon(spi_send_reg(dut, 35, 30, count=24, what='TEXADD3=30'))
+            # Reset VSHIFT:
+            cocotb.start_soon(spi_send_reg(dut, 4, 0, count=6, what='VSHIFT=0'))
 
         elif nframe == 16:
             # Set TEXADD6 to 30:
-            cocotb.start_soon(spi_send_reg(dut, 38, 30, count=24, what='TEXADD6=30'))
+            cocotb.start_soon(spi_send_reg(dut, 38, 30, count=24, what='TEXADD6=30')) # NOTE: TEXADD6 is for wallID 7...
             
         elif nframe == 17:
-            # Set TEXADD0 to 30:
-            cocotb.start_soon(spi_send_reg(dut, 32, 30, count=24, what='TEXADD0=30'))
+            # Set TEXADD7 to 10:
+            cocotb.start_soon(spi_send_reg(dut, 39, 10, count=24, what='TEXADD0=30')) # NOTE: ...TEXADD7 is for wallID 0.
 
 
         #TODO: @@@@@@@@@@@@@@@@ MORE FRAMES @@@@@@@@@@@@@@@@@@@@@@@
@@ -287,7 +291,7 @@ async def test_frames(dut):
 
         # Now handle IMMEDIATE inputs that take effect on the current frame,
         # rather than the next:
-        if frame == 10:
+        if frame == 12:
             # Turn on gen_tex (disable texture ROM; use generated textures instead):
             dut.gen_texb.value = 0 #NOTE: Immediate, so takes effect ON frame 10, not 11.
 
