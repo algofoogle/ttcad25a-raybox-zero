@@ -10,7 +10,7 @@ import re
 
 HIGH_RES        = float(env.get('HIGH_RES')) if 'HIGH_RES' in env else None # If not None, scale H res by this, and step by CLOCK_PERIOD/HIGH_RES instead of unit clock cycles.
 CLOCK_PERIOD    = float(env.get('CLOCK_PERIOD') or 40.0) # Default 40.0 (period of clk oscillator input, in nanoseconds)
-FRAMES          =   int(env.get('FRAMES')       or   15) # Default 15 (total frames to render)
+FRAMES          =   int(env.get('FRAMES')       or   18) # Default 18 (total frames to render)
 INC_PX          =   int(env.get('INC_PX')       or    1) # Default 1 (inc_px on)
 INC_PY          =   int(env.get('INC_PY')       or    1) # Default 1 (inc_py on)
 GEN_TEX         =   int(env.get('GEN_TEX')      or    0) # Default 0 (use tex ROM; no generated textures)
@@ -109,12 +109,12 @@ class SPI:
         await self.spi_tick()
     
 
-async def spi_send_reg(dut, cmd, data, what=''):
+async def spi_send_reg(dut, cmd, data, count=None, what=''):
     dut._log.info(f"spi_send_reg({repr(cmd)}, {repr(data)}) started [{what}]...")
     spi = SPI(dut, 'reg')
     await spi.txn_start()
-    await spi.txn_send(cmd, 4)
-    await spi.txn_send(data, 6)
+    await spi.txn_send(cmd, 8)
+    await spi.txn_send(data, count)
     await spi.txn_stop()
     dut._log.info(f"spi_send_reg() [{what}] DONE")
 
@@ -123,7 +123,7 @@ async def spi_send_pov(dut, data, what=''):
     dut._log.info(f"spi_send_pov({repr(data)}) started [{what}]...")
     spi = SPI(dut, 'reg')
     await spi.txn_start()
-    await spi.txn_send(11, 4) # 11==CMD_POV
+    await spi.txn_send(127, 8) # 127==CMD_POV
     await spi.txn_send(data, 74)
     await spi.txn_stop()
     dut._log.info(f"spi_send_pov() [{what}] DONE")
@@ -216,55 +216,74 @@ async def test_frames(dut):
 
         elif nframe == 4:
             # Set up a nice view for this frame.
-            cocotb.start_soon(spi_send_pov(dut, '00110100011011100011111011011000000111101110000001000001111111000000011110', 'a nice POV'))
+            cocotb.start_soon(spi_send_pov(dut, '00110100011011100011111011011000000111101110000001000001111111000000011110', what='a nice POV'))
 
         elif nframe == 5:
             # Keep the same view as last time.
             pass
 
         elif nframe == 6:
-            # Reassert inc_px/py inputs to see if the view moves.
+            # Reassert inc_px/py inputs to see if the view moves...
             dut.inc_px.value = INC_PX
             dut.inc_py.value = INC_PY
+            # ...AND change ceiling colour:
+            cocotb.start_soon(spi_send_reg(dut, 0, 0b01_00_01, count=6, what='SKY = dark purple'))
 
         elif nframe == 7:
             # Set a floor leak: Send SPI2 ('reg') command 2 (LEAK) and a corresponding value of 13:
-            cocotb.start_soon(spi_send_reg(dut, 2, 13, 'set a LEAK'))
+            cocotb.start_soon(spi_send_reg(dut, 2, 13, count=6, what='set a LEAK'))
 
         elif nframe == 8:
             # Turn on VINF (cmd 5) mode:
-            cocotb.start_soon(spi_send_reg(dut, 5, '100', 'VINF on, LEAK_FIXED off, map_mode=0')) # '100' because we're sending a short payload.
+            cocotb.start_soon(spi_send_reg(dut, 5, '1'+'0'+'000', what='VINF on, LEAK_FIXED off, map_mode=0'))
 
         elif nframe == 9:
-            # Turn off floor leak:
-            # Send SPI2 ('reg') command 2 (LEAK) and a corresponding value of 13:
-            cocotb.start_soon(spi_send_reg(dut, 2, 0, 'turn off LEAK'))
+            # Set VSHIFT to 15:
+            cocotb.start_soon(spi_send_reg(dut, 4, 15, count=6, what='VSHIFT=15'))
 
         elif nframe == 10:
-            # Turn on generated textures (disable SPI textures).
-            pass # Placeholder for dut.gen_texb.value = 0 in IMMEDIATE inputs, below.
+            # Turn on generated textures (disable SPI textures; done with dut.gen_texb.value = 0 in IMMEDIATE inputs, below)...
+            # ...AND enable LEAK_FIXED:
+            cocotb.start_soon(spi_send_reg(dut, 5, '1'+'1'+'000', what='VINF on, LEAK_FIXED on, map_mode=0'))
 
         elif nframe == 11:
-            # Turn off VINF:
-            cocotb.start_soon(spi_send_reg(dut, 5, '000', 'VINF off, LEAK_FIXED off, map_mode=0'))
+            # Turn off VINF and LEAK_FIXED:
+            cocotb.start_soon(spi_send_reg(dut, 5, '0'+'0'+'000', what='VINF off, LEAK_FIXED off, map_mode=0'))
 
         elif nframe == 12:
             # Set map_mode=1:
-            cocotb.start_soon(spi_send_reg(dut, 5, '001', 'VINF off, LEAK_FIXED off, map_mode=1'))
+            cocotb.start_soon(spi_send_reg(dut, 5, '0'+'0'+'001', what='VINF off, LEAK_FIXED off, map_mode=1'))
 
         elif nframe == 13:
-            # Turn off generated textures (enable SPI textures again).
-            pass # Placeholder for dut.gen_texb.value = 1 in IMMEDIATE inputs, below.
+            # Turn off generated textures (enable SPI textures again; dut.gen_texb.value = 1 in IMMEDIATE inputs, below)...
+            # ...AND reset floor leak:
+            # Send SPI2 ('reg') command 2 (LEAK) and payload 0:
+            cocotb.start_soon(spi_send_reg(dut, 2, 0, count=6, what='turn off LEAK'))
 
         elif nframe == 14:
             # Set MapDivX/Y to 12,3 with wall IDs 7,3:
-            cocotb.start_soon(spi_send_reg(dut, 6, '001100'+'000011'+'111'+'011', 'MDX/Y=12,3 WX/Y=7,3'))
+            cocotb.start_soon(spi_send_reg(dut, 6, '001100'+'000011'+'111'+'011', what='MDX/Y=12,3 WX/Y=7,3'))
+
+        elif nframe == 15:
+            # Set TEXADD7 to 10:
+            cocotb.start_soon(spi_send_reg(dut, 39, 10, count=24, what='TEXADD7=10'))
+
+        # elif nframe == 16:
+        #     # Set TEXADD3 to 30:
+        #     cocotb.start_soon(spi_send_reg(dut, 35, 30, count=24, what='TEXADD3=30'))
+
+        elif nframe == 16:
+            # Set TEXADD6 to 30:
+            cocotb.start_soon(spi_send_reg(dut, 38, 30, count=24, what='TEXADD6=30'))
+            
+        elif nframe == 17:
+            # Set TEXADD0 to 30:
+            cocotb.start_soon(spi_send_reg(dut, 32, 30, count=24, what='TEXADD0=30'))
+
 
         #TODO: @@@@@@@@@@@@@@@@ MORE FRAMES @@@@@@@@@@@@@@@@@@@@@@@
-        # - Change TEXADD and floor/ceiling colours
-        # - Show 'dirt world' textures
-        # - Test LEAK_FIXED
-        # - Prepare for other stuff that's coming.
+        # - Change floor/ceiling colours
+        # - Show 'dirt village' textures
 
         # Now handle IMMEDIATE inputs that take effect on the current frame,
         # rather than the next:
