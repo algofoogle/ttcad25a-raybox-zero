@@ -15,12 +15,13 @@ fi
 
 # H.264 file
 function write_h264() {
-    ffmpeg -framerate 60 -i frames_out/rbz_basic_frame-%03d.ppm -c:v libx264 -r 60 "$1"
+    #NOTE: This pads the height by 1px (since it assumes 525px tall, but needs to be divisible by 2 for yuv420p):
+    ffmpeg -framerate 60 -i frames_out/rbz_basic_frame-%04d.ppm -vf "pad=iw:ih+1" -c:v libx264 -pix_fmt yuv420p -r 60 "$1"
 }
 
 function write_animated_gif() {
     #NOTE: -delay 50 sets a 50*10ms (500ms) delay between frames:
-    convert -delay 50 rbz_basic_frame-???.ppm +antialias -font Ubuntu-Mono -fill white -pointsize 18 -gravity South -annotate 0 '%f' "$1"
+    convert -delay 50 rbz_basic_frame-????.ppm +antialias -font Ubuntu-Mono -fill white -pointsize 18 -gravity South -annotate 0 '%f' "$1"
 }
 
 function anton_default1() {
@@ -50,7 +51,7 @@ case "$1" in
     *)
         # Convert PPM sequence to PNG sequence in $1 dir:
         # pushd frames_out
-        for f in rbz_basic_frame-???.ppm; do
+        for f in rbz_basic_frame-????.ppm; do
             echo $f
             convert $f "$1"/$f.png
         done

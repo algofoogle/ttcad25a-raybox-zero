@@ -16,6 +16,7 @@ INC_PY          =   int(env.get('INC_PY')       or    1) # Default 1 (inc_py on)
 GEN_TEX         =   int(env.get('GEN_TEX')      or    0) # Default 0 (use tex ROM; no generated textures)
 DEBUG_POV       =   int(env.get('DEBUG_POV')    or    1) # Default 1 (show POV vectors debug)
 REG             =   int(env.get('REG')          or    0) # Default 0 (UNregistered outputs)
+DEMO_MODE       =   int(env.get('DEMO_MODE')    or    0) # Default 0; If 1, disable all the other tests and just run the demo mode
 
 print(f"""
 Test parameters (can be overridden using ENV vars):
@@ -27,6 +28,7 @@ Test parameters (can be overridden using ENV vars):
 ---      GEN_TEX: {GEN_TEX}
 ---    DEBUG_POV: {DEBUG_POV}
 ---          REG: {REG}
+---    DEMO_MODE: {DEMO_MODE}
 """)
 
 # Make sure all bidir pins are configured as they should be,
@@ -75,6 +77,7 @@ class SPI:
 
     async def spi_tick(self):
         # SPI interface expected to be stable at up to 20% of clock speed:
+        #@@@SMELL: Need some jitter:
         await Timer(CLOCK_PERIOD*5.0, units='ns')
 
     async def txn_start(self):
@@ -137,6 +140,38 @@ async def spi_send_pov(dut, data, what=''):
 #     await spi.txn_stop()
 #     dut._log.info(f"spi_send_pov() [{what}] DONE")
 
+async def async_run_all(steps):
+    for step in steps:
+        await step
+
+def door_reg_string(x:int, y:int, wall:int, pos:int, frame:bool=True):
+    return f"{x&0b111111:06b}{y&0b111111:06b}{wall&0b111:03b}{frame:01b}{pos&0b11111111:08b}"
+
+CMD_SKY    = 0b0000_0000
+CMD_FLOOR  = 0b0000_0001
+CMD_LEAK   = 0b0000_0010
+CMD_OTHER  = 0b0000_0011
+CMD_VSHIFT = 0b0000_0100
+
+CMD_VOPTS  = 0b0000_0101
+CMD_MAPD   = 0b0000_0110
+CMD_MAPR   = 0b0000_0111
+
+CMD_DOOR0  = 0b0000_1000
+CMD_DOOR1  = 0b0000_1001
+CMD_DOOR2  = 0b0000_1010
+CMD_DOOR3  = 0b0000_1011
+
+CMD_TEXADD0= 0b0010_0000
+CMD_TEXADD1= 0b0010_0001
+CMD_TEXADD2= 0b0010_0010
+CMD_TEXADD3= 0b0010_0011
+CMD_TEXADD4= 0b0010_0100
+CMD_TEXADD5= 0b0010_0101
+CMD_TEXADD6= 0b0010_0110
+CMD_TEXADD7= 0b0010_0111
+
+CMD_POV    = 0b0111_1111
 
 @cocotb.test()
 async def test_frames(dut):
@@ -151,6 +186,10 @@ async def test_frames(dut):
     frame_height = 525
     vrange = frame_height
     hres = HIGH_RES or 1
+
+    door_x, door_y = 13, 4
+    door_wall = 1
+    door_pos = 0
 
     print(f"Rendering {frame_count} full frame(s)...")
 
@@ -204,8 +243,12 @@ async def test_frames(dut):
         # - debug
         # - registered_outputs
 
+        # If we just want DEMO_MODE, we disable all other updates.
+        if DEMO_MODE:
+            pass
+
         # Frame 0 will render as per normal (not really controllable).
-        if nframe in [1,2]:
+        elif nframe in [1,2]:
             # Frames 1 & 2 will render per typical design behaviour.
             pass
 
@@ -214,7 +257,7 @@ async def test_frames(dut):
             dut.inc_px.value = 0
             dut.inc_py.value = 0
             # ALSO, use the map rectangle register:
-            cocotb.start_soon(spi_send_reg(dut, 7,
+            cocotb.start_soon(spi_send_reg(dut, CMD_MAPR,
                 '000110' + '001000' +   # mapr_ax/y
                 '001100' + '010010' +   # mapr_bx/y
                 '1' +                   # mapr_erase
@@ -227,71 +270,125 @@ async def test_frames(dut):
             cocotb.start_soon(spi_send_pov(dut, '00110100011011100011111011011000000111101110000001000001111111000000011110', what='a nice POV'))
 
         elif nframe == 5:
-            # Keep the same view as last time.
-            pass
+            # Keep the same view as last time, but put in a door:
+            cocotb.start_soon(spi_send_reg(dut, CMD_DOOR0, door_reg_string(door_x, door_y, door_wall, door_pos), what='Door'))
 
         elif nframe == 6:
             # Reassert inc_px/py inputs to see if the view moves...
             dut.inc_px.value = INC_PX
             dut.inc_py.value = INC_PY
-            # ...AND change ceiling colour:
-            cocotb.start_soon(spi_send_reg(dut, 0, 0b01_00_01, count=6, what='SKY = dark purple'))
+            # ...AND do some async SPI stuff...
+            door_pos = 8<<2
+            cocotb.start_soon(async_run_all([
+                # Change ceiling colour:
+                spi_send_reg(dut, CMD_SKY, 0b01_00_01, count=6, what='SKY = dark purple'),
+                # Update the door's sliding position:
+                spi_send_reg(dut, CMD_DOOR0, door_reg_string(door_x, door_y, door_wall, door_pos), what='Door'),
+            ]))
 
         elif nframe == 7:
-            # Set a floor leak: Send SPI2 ('reg') command 2 (LEAK) and a corresponding value of 13:
-            cocotb.start_soon(spi_send_reg(dut, 2, 13, count=6, what='set a LEAK'))
+            door_pos = 16<<2
+            cocotb.start_soon(async_run_all([
+                # Set a floor leak: Send SPI2 ('reg') command 2 (LEAK) and a corresponding value of 13:
+                spi_send_reg(dut, CMD_LEAK, 13, count=6, what='set a LEAK'),
+                # Update the door's sliding position:
+                spi_send_reg(dut, CMD_DOOR0, door_reg_string(door_x, door_y, door_wall, door_pos), what='Door'),
+            ]))
 
         elif nframe == 8:
-            # Turn on VINF (cmd 5) mode:
-            cocotb.start_soon(spi_send_reg(dut, 5, '1'+'0'+'000', what='VINF on, LEAK_FIXED off, map_mode=0'))
+            door_pos = 45<<2
+            cocotb.start_soon(async_run_all([
+                # Turn on VINF (cmd 5) mode:
+                spi_send_reg(dut, CMD_VOPTS, '1'+'0'+'000', what='VINF on, LEAK_FIXED off, map_mode=0'),
+                # Update the door's sliding position:
+                spi_send_reg(dut, CMD_DOOR0, door_reg_string(door_x, door_y, door_wall, door_pos), what='Door'),
+            ]))
 
         elif nframe == 9:
-            # Set VSHIFT to 15:
-            cocotb.start_soon(spi_send_reg(dut, 4, 15, count=6, what='VSHIFT=15'))
+            door_pos = 46<<2
+            cocotb.start_soon(async_run_all([
+                # Set VSHIFT to 15:
+                spi_send_reg(dut, CMD_VSHIFT, 15, count=6, what='VSHIFT=15'),
+                # Update the door's sliding position:
+                spi_send_reg(dut, CMD_DOOR0, door_reg_string(door_x, door_y, door_wall, door_pos), what='Door'),
+            ]))
 
         elif nframe == 10:
-            # Enable LEAK_FIXED:
-            cocotb.start_soon(spi_send_reg(dut, 5, '1'+'1'+'000', what='VINF on, LEAK_FIXED on, map_mode=0'))
+            door_pos = 47<<2
+            cocotb.start_soon(async_run_all([
+                # Enable LEAK_FIXED:
+                spi_send_reg(dut, CMD_VOPTS, '1'+'1'+'000', what='VINF on, LEAK_FIXED on, map_mode=0'),
+                # Update the door's sliding position:
+                spi_send_reg(dut, CMD_DOOR0, door_reg_string(door_x, door_y, door_wall, door_pos), what='Door'),
+            ]))
 
         elif nframe == 11:
-            # Turn off VINF and LEAK_FIXED:
-            cocotb.start_soon(spi_send_reg(dut, 5, '0'+'0'+'000', what='VINF off, LEAK_FIXED off, map_mode=0'))
+            door_pos = 48<<2
+            cocotb.start_soon(async_run_all([
+                # Turn off VINF and LEAK_FIXED:
+                spi_send_reg(dut, CMD_VOPTS, '0'+'0'+'000', what='VINF off, LEAK_FIXED off, map_mode=0'),
+                # Update the door's sliding position:
+                spi_send_reg(dut, CMD_DOOR0, door_reg_string(door_x, door_y, door_wall, door_pos), what='Door'),
+            ]))
 
         elif nframe == 12:
             # Turn on generated textures (disable SPI textures; done with dut.gen_texb.value = 0 in IMMEDIATE inputs, below)...
-            # ...AND map_mode=2:
-            cocotb.start_soon(spi_send_reg(dut, 5, '0'+'0'+'010', what='VINF off, LEAK_FIXED off, map_mode=2'))
+            door_x += 1
+            door_pos = 49<<2
+            cocotb.start_soon(async_run_all([
+                # ...AND map_mode=2:
+                spi_send_reg(dut, CMD_VOPTS, '0'+'0'+'010', what='VINF off, LEAK_FIXED off, map_mode=2'),
+                # Update the door sliding position:
+                spi_send_reg(dut, CMD_DOOR0, door_reg_string(door_x, door_y, door_wall, door_pos), what='Door'),
+                # Also change the map rectangle regs:
+                spi_send_reg(dut, CMD_MAPR,
+                    '000110' + '000100' +   # mapr_ax/y = 6,4
+                    '011110' + '001010' +   # mapr_bx/y = 30,10
+                    '0' +                   # mapr_erase (off)
+                    '010',                  # mapr_wall
+                    what='Map rectangle'
+                ),
+            ]))
 
         elif nframe == 13:
             # Turn off generated textures (enable SPI textures again; dut.gen_texb.value = 1 in IMMEDIATE inputs, below)...
-            # ...AND reset floor leak:
-            # Send SPI2 ('reg') command 2 (LEAK) and payload 0:
-            cocotb.start_soon(spi_send_reg(dut, 2, 0, count=6, what='LEAK=0'))
+            # door_pos = 255
+            cocotb.start_soon(async_run_all([
+                # ...AND reset floor leak:
+                # Send SPI2 ('reg') command 2 (LEAK) and payload 0:
+                spi_send_reg(dut, CMD_LEAK, 0, count=6, what='LEAK=0'),
+                # # Update the door sliding position:
+                # spi_send_reg(dut, CMD_DOOR0, door_reg_string(door_x, door_y, door_wall, door_pos), what='Door'),
+            ]))
 
         elif nframe == 14:
-            # Set MapDivX/Y to 12,3 with wall IDs 7,0:
-            cocotb.start_soon(spi_send_reg(dut, 6, '001100'+'000011'+'111'+'000', what='MDX/Y=12,3 WX/Y=7,0'))
+            door_pos = 255
+            cocotb.start_soon(async_run_all([
+                # Set MapDivX/Y to 12,3 with wall IDs 7,0:
+                spi_send_reg(dut, CMD_MAPD, '001100'+'000010'+'111'+'000', what='MDX/Y=12,3 WX/Y=7,0'),
+                # Update the door sliding position:
+                spi_send_reg(dut, CMD_DOOR0, door_reg_string(door_x, door_y, door_wall, door_pos), what='Door'),
+            ]))
 
         elif nframe == 15:
             # Reset VSHIFT:
-            cocotb.start_soon(spi_send_reg(dut, 4, 0, count=6, what='VSHIFT=0'))
+            cocotb.start_soon(spi_send_reg(dut, CMD_VSHIFT, 0, count=6, what='VSHIFT=0'))
 
         elif nframe == 16:
             # Set TEXADD6 to 30:
-            cocotb.start_soon(spi_send_reg(dut, 38, 30, count=24, what='TEXADD6=30')) # NOTE: TEXADD6 is for wallID 7...
+            cocotb.start_soon(spi_send_reg(dut, CMD_TEXADD6, 30, count=24, what='TEXADD6=30')) # NOTE: TEXADD6 is for wallID 7...
             
         elif nframe == 17:
             # Set TEXADD7 to 10:
-            cocotb.start_soon(spi_send_reg(dut, 39, 10, count=24, what='TEXADD0=30')) # NOTE: ...TEXADD7 is for wallID 0.
+            cocotb.start_soon(spi_send_reg(dut, CMD_TEXADD7, 10, count=24, what='TEXADD7=30')) # NOTE: ...TEXADD7 is for wallID 0.
 
-
-        #TODO: @@@@@@@@@@@@@@@@ MORE FRAMES @@@@@@@@@@@@@@@@@@@@@@@
-        # - Change floor/ceiling colours
-        # - Show 'dirt village' textures
 
         # Now handle IMMEDIATE inputs that take effect on the current frame,
-        # rather than the next:
-        if frame == 12:
+        # rather than the next...
+        if DEMO_MODE:
+            pass
+
+        elif frame == 12:
             # Turn on gen_tex (disable texture ROM; use generated textures instead):
             dut.gen_texb.value = 0 #NOTE: Immediate, so takes effect ON frame 10, not 11.
 
@@ -300,7 +397,7 @@ async def test_frames(dut):
             dut.gen_texb.value = 1 #NOTE: Immediate, so takes effect ON frame 13.
 
         # Create PPM file to visualise the frame, and write its header:
-        img = open(f"frames_out/rbz_basic_frame-{frame:03d}.ppm", "w")
+        img = open(f"frames_out/rbz_basic_frame-{frame:04d}.ppm", "w")
         img.write("P3\n")
         img.write(f"{int(hrange*hres)} {vrange:d}\n")
         img.write("255\n")

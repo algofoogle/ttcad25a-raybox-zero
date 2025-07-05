@@ -9,6 +9,7 @@ PROJECT_SOURCES = \
 	rbz_options.v								\
 	raybox-zero/src/rtl/fixed_point_params.v	\
 	raybox-zero/src/rtl/helpers.v				\
+	raybox-zero/src/rtl/doors.v					\
 	raybox-zero/src/rtl/debug_overlay.v			\
 	raybox-zero/src/rtl/lzc.v					\
 	raybox-zero/src/rtl/map_overlay.v			\
