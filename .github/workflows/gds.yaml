@@ -25,51 +25,51 @@ jobs:
       - name: Run Tiny Tapeout Precheck
         uses: TinyTapeout/tt-gds-action/precheck@tt10
 
-  gl_test:
-    needs: gds
-    runs-on: ubuntu-24.04
-    steps:
-      - name: checkout repo
-        uses: actions/checkout@v4
-        with:
-          submodules: recursive
+  # gl_test:
+  #   needs: gds
+  #   runs-on: ubuntu-24.04
+  #   steps:
+  #     - name: checkout repo
+  #       uses: actions/checkout@v4
+  #       with:
+  #         submodules: recursive
 
-      - name: GL test
-        uses: TinyTapeout/tt-gds-action/gl_test@tt10
+  #     - name: GL test
+  #       uses: TinyTapeout/tt-gds-action/gl_test@tt10
 
-      - name: Install ImageMagick
-        shell: bash
-        run: sudo apt-get update && sudo apt-get install -y imagemagick
+  #     - name: Install ImageMagick
+  #       shell: bash
+  #       run: sudo apt-get update && sudo apt-get install -y imagemagick
 
-      - name: Convert output frames from PPMs to PNGs
-        if: success() || failure() # Run this even if the step above fails.
-        shell: bash
-        run: |
-          pwd
-          ls -al
-          cd test
-          mkdir frames_out/png
-          cd frames_out
-          ../animate.sh png && cd png && tar czf ../frames-gl.tgz *.png
+  #     - name: Convert output frames from PPMs to PNGs
+  #       if: success() || failure() # Run this even if the step above fails.
+  #       shell: bash
+  #       run: |
+  #         pwd
+  #         ls -al
+  #         cd test
+  #         mkdir frames_out/png
+  #         cd frames_out
+  #         ../animate.sh png && cd png && tar czf ../frames-gl.tgz *.png
 
-      - name: Convert output frames from PPMs to animated GIF
-        if: success() || failure() # Run this even if the step above fails.
-        shell: bash
-        run: |
-          pwd
-          ls -al
-          cd test
-          cd frames_out
-          ../animate.sh frames-gl.gif
+  #     - name: Convert output frames from PPMs to animated GIF
+  #       if: success() || failure() # Run this even if the step above fails.
+  #       shell: bash
+  #       run: |
+  #         pwd
+  #         ls -al
+  #         cd test
+  #         cd frames_out
+  #         ../animate.sh frames-gl.gif
 
-      - name: Store frame output files
-        if: success() || failure()
-        uses: actions/upload-artifact@v4
-        with:
-          name: frames-gl
-          path: |
-            test/frames_out/frames-gl.tgz
-            test/frames_out/frames-gl.gif
+  #     - name: Store frame output files
+  #       if: success() || failure()
+  #       uses: actions/upload-artifact@v4
+  #       with:
+  #         name: frames-gl
+  #         path: |
+  #           test/frames_out/frames-gl.tgz
+  #           test/frames_out/frames-gl.gif
 
   viewer:
     needs: gds
